@@ -6,6 +6,8 @@
 #   터미널 2:  ~/speech-to-speech/run_local_rag.sh  ← 이 스크립트
 #
 # 말투 지시: TTS_INSTRUCT="..." ./run_local_rag.sh (기본은 사용 안 함)
+# 문장 사이 쉼(초): SENTENCE_PAUSE_S=0.4 기본 — 문장 단위 합성은 문장 앞 무음이 잘려
+#   문장 사이가 쉼표보다 짧게 들린다 (ajou-vis docs/tts_voice_experiment.md). 0이면 끔
 # 구성: whisper-large-v3-turbo(MLX) STT + 언어 자동 감지
 #      + LLM 슬롯 → RAG 서버(rewrite → 학칙 검색 → 게이트 → 치토 답변, 스트리밍)
 #      + Qwen3-TTS. 로그는 run_local.log 에도 기록. 종료: Ctrl+C
@@ -22,6 +24,7 @@ exec .venv/bin/speech-to-speech local \
   --model_name ajou-vis \
   --qwen3_tts_speaker Sohee \
   --qwen3_tts_coalesce_inputs False \
+  --qwen3_tts_sentence_pause_s "${SENTENCE_PAUSE_S:-0.4}" \
   "${instruct_args[@]}" \
   --stream_batch_sentences 1 \
   --local_audio_block_mic_during_playback \
