@@ -65,6 +65,8 @@ ESTIMATED_QWEN3_CJK_CHARS_PER_SECOND = 5.5
 QWEN3_TOKEN_SAFETY_MARGIN = 1.35
 QWEN3_BASE_PROMPT_SECONDS = 1.0
 QWEN3_PUNCTUATION_PAUSE_SECONDS = 0.5
+HANGUL_SYLLABLE_PATTERN = re.compile(r"[\uac00-\ud7a3]")
+LATIN_LETTER_PATTERN = re.compile(r"[A-Za-z]")
 CJK_CHARACTER_PATTERN = re.compile(
     r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff"
     r"\U00020000-\U0002fa1f]"
@@ -91,6 +93,24 @@ QWEN3_LANGUAGE_ALIASES = {
     "es": "spanish",
     "it": "italian",
 }
+
+
+def _language_from_text(text: Optional[str]) -> Optional[str]:
+    """문장 글자로 한국어/영어를 고른다. 한글 한 음절은 영문 약 세 글자로 친다 ("CU는 성호관 1층" → korean).
+
+    글자가 없거나(숫자만) 한·영이 아닌 문장(중·일)이면 None → 발화 언어코드에 맡긴다.
+    """
+    if not text:
+        return None
+    hangul = len(HANGUL_SYLLABLE_PATTERN.findall(text))
+    latin = len(LATIN_LETTER_PATTERN.findall(text))
+    if len(CJK_CHARACTER_PATTERN.findall(text)) - hangul > hangul:
+        return None
+    if hangul and hangul * 3 >= latin:
+        return "korean"
+    if latin:
+        return "english"
+    return None
 
 
 class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
@@ -399,10 +419,16 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
             return DEFAULT_MLX_STREAMING_CHUNK_SIZE
         return DEFAULT_FASTER_STREAMING_CHUNK_SIZE
 
-    def _effective_language(self) -> str:
-        """설정이 auto면 이번 발화의 언어코드(예: "ko", "ko-auto")를 우선 사용한다."""
+    def _effective_language(self, text: Optional[str] = None) -> str:
+        """설정이 auto면 합성할 문장의 글자(한글·영문)로 언어를 정하고, 판단이 안 되면 이번 발화의 언어코드(예: "ko", "ko-auto")를 쓴다.
+
+        발화 언어코드는 사용자가 말한 언어라서, 한국어로 "영어로 답해 줘"라고 하면 영어 답도 ko가 된다 → 문장 글자를 먼저 본다.
+        """
         if self.language != "auto":
             return self.language
+        by_text = _language_from_text(text)
+        if by_text:
+            return by_text
         code = getattr(self, "_utterance_language", None)
         if not code:
             return self.language
@@ -958,7 +984,7 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
         yield from self._stream(
             self.model.generate_voice_clone_streaming(
                 text=text,
-                language=self.language,
+                language=self._effective_language(text),
                 ref_audio=self.ref_audio,
                 ref_spk=getattr(self, "ref_spk", None),
                 ref_rvq=getattr(self, "ref_rvq", None),
@@ -981,9 +1007,10 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
                 "Set qwen3_tts_speaker or use a voice-clone model with ref_audio."
             )
 
+        language = self._effective_language(text)
         logger.info(
             "Qwen3-TTS synth: chars=%d speaker=%s language=%s max_tokens=%d gen_kwargs=%s text=%r",
-            len(text), speaker, self._effective_language(), utterance_max_new_tokens,
+            len(text), speaker, language, utterance_max_new_tokens,
             self.gen_kwargs, text[:40],
         )
         if self.backend == "mlx":
@@ -995,7 +1022,7 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
                 max_tokens=utterance_max_new_tokens,
                 text=text,
                 speaker=speaker,
-                language=self._effective_language(),
+                language=language,
                 instruct=self.instruct,
             ):
                 if dump_dir and chunk is not None and not isinstance(chunk, bytes):
@@ -1014,7 +1041,7 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
             self.model.generate_custom_voice_streaming(
                 text=text,
                 speaker=speaker,
-                language=self._effective_language(),
+                language=language,
                 instruct=self.instruct,
                 chunk_size=self.streaming_chunk_size,
                 max_new_tokens=utterance_max_new_tokens,
