@@ -803,6 +803,44 @@ def test_process_voice_clone_passes_none_non_streaming_mode_when_unset(monkeypat
     assert captured["non_streaming_mode"] is None
 
 
+@pytest.mark.parametrize(
+    ("language", "language_code", "expected"),
+    [("auto", "ko", "korean"), ("auto", "en-auto", "english"), ("English", "ko", "English")],
+)
+def test_process_voice_clone_passes_utterance_language_to_faster_backend(monkeypatch, language, language_code, expected):
+    captured = {}
+    handler = object.__new__(Qwen3TTSHandler)
+    handler.should_listen = Event()
+    handler.cancel_scope = None
+    handler.ref_audio = "TTS/ref_audio.wav"
+    handler.ref_text = "Reference text."
+    handler.speaker = None
+    handler.instruct = None
+    handler.language = language
+    handler.xvec_only = False
+    handler.parity_mode = False
+    handler.non_streaming_mode = None
+    handler.streaming_chunk_size = 8
+    handler.max_new_tokens = 360
+    handler.blocksize = 512
+    handler.backend = "faster_qwen3_tts"
+    handler.queue_in = Queue()
+    handler.model = SimpleNamespace(
+        model=SimpleNamespace(model=SimpleNamespace(tts_model_type="base")),
+        generate_voice_clone_streaming=lambda **kwargs: (
+            captured.update(kwargs),
+            iter([(_audible_stream_chunk(), 16000, {})]),
+        )[1],
+    )
+
+    monkeypatch.setattr(qwen3_tts_module.console, "print", lambda *args, **kwargs: None)
+
+    outputs = list(handler.process(TTSInput(text="Hello there.", language_code=language_code)))
+
+    assert len(outputs) == 1
+    assert captured["language"] == expected
+
+
 def test_process_voice_clone_uses_precomputed_ggml_references_without_audio(monkeypatch):
     captured = {}
     handler = object.__new__(Qwen3TTSHandler)

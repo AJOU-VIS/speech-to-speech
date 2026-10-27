@@ -958,7 +958,7 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
         yield from self._stream(
             self.model.generate_voice_clone_streaming(
                 text=text,
-                language=self.language,
+                language=self._effective_language(),   # custom_voice와 같이 이번 발화의 언어 (auto면 STT 언어코드)
                 ref_audio=self.ref_audio,
                 ref_spk=getattr(self, "ref_spk", None),
                 ref_rvq=getattr(self, "ref_rvq", None),
