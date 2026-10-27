@@ -804,10 +804,44 @@ def test_process_voice_clone_passes_none_non_streaming_mode_when_unset(monkeypat
 
 
 @pytest.mark.parametrize(
-    ("language", "language_code", "expected"),
-    [("auto", "ko", "korean"), ("auto", "en-auto", "english"), ("English", "ko", "English")],
+    ("text", "language_code", "expected"),
+    [
+        ("휴학 신청은 포털에서 할 수 있어요.", "ko", "korean"),
+        ("CU는 성호관 1층에 있어요.", "en", "korean"),
+        ("According to Article 47, undergraduates get a warning.", "ko-auto", "english"),  # 한국어로 "영어로 답해 줘"
+        ("The 학칙 says 1.75 or below.", "ko", "english"),
+        ("1.75", "ko-auto", "korean"),          # 글자가 없으면 발화 언어코드
+        ("我懂，心情不好时会让人特别疲惫。", "zh", "chinese"),  # 한·영이 아니면 발화 언어코드
+        ("Hello there.", None, "english"),
+        ("1.75", None, "auto"),
+    ],
 )
-def test_process_voice_clone_passes_utterance_language_to_faster_backend(monkeypatch, language, language_code, expected):
+def test_effective_language_prefers_sentence_text_over_utterance_code(text, language_code, expected):
+    handler = object.__new__(Qwen3TTSHandler)
+    handler.language = "auto"
+    handler._utterance_language = language_code
+
+    assert handler._effective_language(text) == expected
+
+
+def test_effective_language_keeps_explicit_setting():
+    handler = object.__new__(Qwen3TTSHandler)
+    handler.language = "English"
+    handler._utterance_language = "ko"
+
+    assert handler._effective_language("안녕하세요.") == "English"
+
+
+@pytest.mark.parametrize(
+    ("language", "language_code", "text", "expected"),
+    [
+        ("auto", "ko", "안녕하세요.", "korean"),
+        ("auto", "ko", "Hello there.", "english"),
+        ("auto", "en-auto", "1.75", "english"),
+        ("English", "ko", "안녕하세요.", "English"),
+    ],
+)
+def test_process_voice_clone_passes_effective_language_to_faster_backend(monkeypatch, language, language_code, text, expected):
     captured = {}
     handler = object.__new__(Qwen3TTSHandler)
     handler.should_listen = Event()
@@ -835,7 +869,7 @@ def test_process_voice_clone_passes_utterance_language_to_faster_backend(monkeyp
 
     monkeypatch.setattr(qwen3_tts_module.console, "print", lambda *args, **kwargs: None)
 
-    outputs = list(handler.process(TTSInput(text="Hello there.", language_code=language_code)))
+    outputs = list(handler.process(TTSInput(text=text, language_code=language_code)))
 
     assert len(outputs) == 1
     assert captured["language"] == expected
