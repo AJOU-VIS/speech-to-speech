@@ -28,6 +28,7 @@ from openai.types.realtime.realtime_conversation_item_assistant_message import (
 from openai.types.responses import ResponseFunctionToolCall
 from pydantic import BaseModel, ConfigDict, Field
 
+from speech_to_speech import latency_trace
 from speech_to_speech.baseHandler import BaseHandler
 from speech_to_speech.LLM.chat import (
     Chat,
@@ -635,6 +636,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
                     sentence_batch = []
                 yield from self._record_tool_call(state, turn, event.item)
             elif isinstance(event, TextDelta):
+                latency_trace.mark("llm_first_delta")
                 if not turn.wants_audio:
                     # Text-only: forward verbatim. Keep every character (no
                     # remove_unspeechable, which strips TTS-unfriendly symbols) and

@@ -27,6 +27,7 @@ from jsonschema import SchemaError, ValidationError
 from jsonschema.validators import validator_for
 from openai import AsyncOpenAI
 
+from speech_to_speech import latency_trace
 from speech_to_speech.pipeline.transcript_logging import log_exception
 
 logger = logging.getLogger(__name__)
@@ -240,6 +241,7 @@ class PlaybackBuffer:
             self._input_complete = False
             self._audio.extend(audio)
             self._active_until = time.monotonic() + max(0.15, len(audio) / (2 * self.recv_rate))
+        latency_trace.mark("client_audio_in")
 
     def finish(self) -> None:
         """Allow a completed short response to play before reaching the startup target."""
@@ -264,6 +266,7 @@ class PlaybackBuffer:
             if available:
                 outdata[:available] = self._audio[:available]
                 del self._audio[:available]
+                latency_trace.mark("playback_start")
             if available < needed:
                 outdata[available:] = b"\x00" * (needed - available)
                 self._playing = False
