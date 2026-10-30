@@ -637,6 +637,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
                 yield from self._record_tool_call(state, turn, event.item)
             elif isinstance(event, TextDelta):
                 latency_trace.mark("llm_first_delta")
+                latency_trace.delta(event.text)
                 if not turn.wants_audio:
                     # Text-only: forward verbatim. Keep every character (no
                     # remove_unspeechable, which strips TTS-unfriendly symbols) and
@@ -669,6 +670,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
                         break
                     printable_text = sentences[-1] + trailing_whitespace
 
+        latency_trace.mark("llm_stream_end")
         if not cancelled:
             if printable_text.strip():
                 sentence_batch.append(remove_markdown(printable_text.strip()))

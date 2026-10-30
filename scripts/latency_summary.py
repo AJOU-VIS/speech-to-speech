@@ -34,6 +34,8 @@ def load(paths):
             if not line.strip():
                 continue
             r = json.loads(line)
+            if r["stage"] == "llm_delta":
+                continue          # 글자 조각 기록은 latency_simulate.py가 쓴다
             t = turns[(k, r["turn"])]
             t[r["stage"]] = r["t_s"]
             if r["stage"] == "vad_emit":

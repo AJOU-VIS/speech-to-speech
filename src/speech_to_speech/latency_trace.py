@@ -12,6 +12,8 @@
   vad_emit        VAD가 말 끝을 확정해 내보냄 (extra: delay_s = Smart Turn 등으로 일부러 늦춘 시간)
   stt_done        STT 최종 전사가 나옴
   llm_first_delta LLM(우리 RAG 서버)에서 첫 글자 조각이 도착 — RAG 서버의 재작성·검색·Claude 첫 토큰이 모두 포함
+  llm_delta       (여러 번) 글자 조각이 도착한 시각과 내용. 턴마다 앞쪽 약 400자까지만 기록 — 분할 정책(L0/L2) 시뮬레이션용
+  llm_stream_end  LLM 스트림이 끝난 시각 (한 문장짜리 답은 이때 첫 문장이 확정된다)
   llm_first_chunk 첫 문장 묶음 완성 (지금 방식 L0: 문장 분리기가 문장 끝을 확정한 시점)
   tts_input       첫 문장이 TTS 입력으로 전달됨
   tts_first_audio TTS가 첫 오디오 조각을 냄
@@ -38,7 +40,8 @@ from speech_to_speech.pipeline.messages import (
 
 _PATH = os.environ.get("S2S_LATENCY_TRACE") or None
 _lock = threading.Lock()
-_state: dict[str, Any] = {"turn": 0, "t0": None, "seen": set()}
+_MAX_DELTA_CHARS = 400   # 턴마다 기록할 글자 조각의 최대 글자 수 (파일이 커지지 않게)
+_state: dict[str, Any] = {"turn": 0, "t0": None, "seen": set(), "delta_chars": 0}
 
 
 def enabled() -> bool:
@@ -58,6 +61,7 @@ def new_turn(t0: float, **extra: Any) -> None:
         _state["turn"] += 1
         _state["t0"] = t0
         _state["seen"] = {"vad_emit"}
+        _state["delta_chars"] = 0
         turn = _state["turn"]
     _append({"turn": turn, "stage": "vad_emit", "t_s": round(perf_counter() - t0, 4), **extra})
 
@@ -76,6 +80,20 @@ def mark(stage: str, **extra: Any) -> None:
     _append({"turn": turn, "stage": stage, "t_s": round(now - t0, 4), **extra})
 
 
+def delta(text: str) -> None:
+    """LLM 스트림에서 글자 조각이 도착할 때마다 부른다. 앞쪽 _MAX_DELTA_CHARS자까지만 시각과 내용을 기록한다."""
+    if _PATH is None or not text:
+        return
+    now = perf_counter()
+    with _lock:
+        t0 = _state["t0"]
+        if t0 is None or _state["delta_chars"] >= _MAX_DELTA_CHARS:
+            return
+        _state["delta_chars"] += len(text)
+        turn = _state["turn"]
+    _append({"turn": turn, "stage": "llm_delta", "t_s": round(now - t0, 4), "text": text})
+
+
 def on_output(output: Any, queued_output: Any, source_input: Any) -> None:
     """BaseHandler.run이 결과를 다음 큐에 넣기 직전에 부른다. 메시지 종류로 단계를 구분한다."""
     if _PATH is None:
@@ -90,7 +108,7 @@ def on_output(output: Any, queued_output: Any, source_input: Any) -> None:
         mark("stt_done", chars=len(output.text or ""))
     elif isinstance(output, LLMResponseChunk):
         if (output.text or "").strip():
-            mark("llm_first_chunk", chars=len(output.text))
+            mark("llm_first_chunk", chars=len(output.text), text=output.text[:80])
     elif isinstance(output, TTSInput):
         mark("tts_input", chars=len(output.text or ""))
     elif isinstance(source_input, TTSInput):
