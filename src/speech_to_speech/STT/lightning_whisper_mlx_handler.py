@@ -45,8 +45,11 @@ class LightningWhisperSTTHandler(BaseSTTHandler):
         torch_dtype: str = "float16",
         compile_mode: Optional[str] = None,
         language: Optional[str] = None,
+        allowed_languages: Optional[str] = None,
         gen_kwargs: dict[str, Any] = {},
     ) -> None:
+        if allowed_languages:
+            logger.warning("allowed_languages is not supported by whisper-mlx; ignoring it")
         if len(model_name.split("/")) > 1:
             model_name = model_name.split("/")[-1]
         self.device = device

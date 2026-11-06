@@ -40,6 +40,14 @@ class WhisperSTTHandlerArguments:
         default="transcribe",
         metadata={"help": "The task to perform, typically 'transcribe' for transcription. Default is 'transcribe'."},
     )
+    stt_allowed_languages: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Comma-separated language codes for auto-detection, e.g. 'ko,en'. A detected language "
+            "outside this list is replaced by the first one, so short or noisy utterances are never "
+            "transcribed in an unrelated language. Only used with language 'auto'. Default None (any language)."
+        },
+    )
     language: Optional[str] = field(
         default="en",
         metadata={
