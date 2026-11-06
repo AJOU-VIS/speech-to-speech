@@ -8,6 +8,7 @@ exec .venv/bin/speech-to-speech local \
   --mac-optimal-settings \
   --stt mlx-audio-whisper \
   --language auto \
+  --mlx_audio_whisper_allowed_languages ko,en \
   --local_audio_block_mic_during_playback \
   --port 8766 \
   "$@" 2>&1 | tee -a run_local.log

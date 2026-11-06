@@ -8,7 +8,7 @@
 # 말투 지시: TTS_INSTRUCT="..." ./run_local_rag.sh (기본은 사용 안 함)
 # 문장 사이 쉼(초): SENTENCE_PAUSE_S=0.4 기본 — 문장 단위 합성은 문장 앞 무음이 잘려
 #   문장 사이가 쉼표보다 짧게 들린다 (ajou-vis docs/tts_voice_experiment.md). 0이면 끔
-# 구성: whisper-large-v3-turbo(MLX) STT + 언어 자동 감지
+# 구성: whisper-large-v3-turbo(MLX) STT + 언어 자동 감지(한국어·영어만, 그 밖은 한국어로 처리)
 #      + LLM 슬롯 → RAG 서버(rewrite → 학칙 검색 → 게이트 → 치토 답변, 스트리밍)
 #      + Qwen3-TTS. 로그는 run_local.log 에도 기록. 종료: Ctrl+C
 cd "$(dirname "$0")"
@@ -18,6 +18,7 @@ exec .venv/bin/speech-to-speech local \
   --mac-optimal-settings \
   --stt mlx-audio-whisper \
   --language auto \
+  --mlx_audio_whisper_allowed_languages ko,en \
   --llm_backend chat-completions \
   --responses_api_base_url http://127.0.0.1:8100/v1 \
   --responses_api_api_key dummy \
