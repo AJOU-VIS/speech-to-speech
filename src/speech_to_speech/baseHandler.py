@@ -10,6 +10,7 @@ from typing import Any, Generic, Iterator, TypeVar, cast
 
 import numpy as np
 
+from speech_to_speech import latency_trace
 from speech_to_speech.pipeline.control import PipelineControlMessage, is_control_message, SESSION_END
 from speech_to_speech.pipeline.events import PipelineEvent, TokenUsageEvent
 from speech_to_speech.pipeline.log_context import pipeline_log_ctx
@@ -155,6 +156,7 @@ class BaseHandler(Generic[InT, OutT]):
                         OutT | PipelineControlMessage | bytes,
                         self.output_for_queue(output, typed_item),
                     )
+                    latency_trace.on_output(output, queued_output, typed_item)
                     self.queue_out.put(queued_output)
                     start_time = perf_counter()
             except Exception as exc:
