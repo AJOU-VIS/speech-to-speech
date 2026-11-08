@@ -396,6 +396,7 @@ def test_parser_carries_only_selected_normalized_configs():
     assert args.stt_backend.name == "mlx-audio-whisper"
     assert args.stt_backend.config == {
         "model_name": "custom/whisper",
+        "allowed_languages": None,
         "language": "auto",
         "gen_kwargs": {},
     }
@@ -579,7 +580,7 @@ def test_global_device_does_not_reach_mlx_audio_whisper_setup(monkeypatch):
 
     captured = {}
 
-    def fake_setup(self, model_name, language, gen_kwargs):
+    def fake_setup(self, model_name, language, gen_kwargs, allowed_languages=None):
         captured.update(model_name=model_name, language=language, gen_kwargs=gen_kwargs)
 
     monkeypatch.setattr(MLXAudioWhisperSTTHandler, "setup", fake_setup)

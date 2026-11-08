@@ -8,6 +8,7 @@ from rich.console import Console
 
 from speech_to_speech.pipeline.handler_types import STTIn, STTOut
 from speech_to_speech.pipeline.messages import PartialTranscription, Transcription
+from speech_to_speech.STT.allowed_languages import apply_allowed_language, configure_allowed_languages
 from speech_to_speech.STT.base_stt_handler import BaseSTTHandler
 from speech_to_speech.utils.mlx_lock import MLXLockContext
 
@@ -43,6 +44,7 @@ class MLXAudioWhisperSTTHandler(BaseSTTHandler):
         self,
         model_name: str = "mlx-community/whisper-large-v3-turbo",
         language: Optional[str] = None,
+        allowed_languages: Optional[str] = None,
         gen_kwargs: dict[str, Any] = {},
     ) -> None:
         from mlx_audio.stt.generate import load_model
@@ -85,7 +87,32 @@ class MLXAudioWhisperSTTHandler(BaseSTTHandler):
 
         logger.info(f"Model {model_name} loaded successfully")
 
+        self._restrict_language_detection(configure_allowed_languages(language, allowed_languages, logger))
         self.warmup()
+
+    def _restrict_language_detection(self, allowed: Optional[list[str]]) -> None:
+        """Apply the allowed-language rule inside mlx-audio's own detection (None = no restriction).
+
+        ``generate()`` picks the most probable language from the dict that
+        ``model.detect_language()`` returns, so rewriting that dict steers the choice
+        without an extra encoder pass.
+        """
+        if not allowed:
+            return
+        detect_language = self.model.detect_language
+
+        def restricted(*args: Any, **kwargs: Any) -> Any:
+            tokens, probs = detect_language(*args, **kwargs)
+
+            def steer(dist: dict[str, float]) -> dict[str, float]:
+                detected = max(dist, key=dist.get) if dist else None
+                chosen = apply_allowed_language(detected, allowed)
+                return dist if chosen == detected else {chosen: 1.0}
+
+            probs = steer(probs) if isinstance(probs, dict) else [steer(p) for p in probs]
+            return tokens, probs
+
+        self.model.detect_language = restricted
 
     def warmup(self) -> None:
         logger.info(f"Warming up {self.__class__.__name__}")

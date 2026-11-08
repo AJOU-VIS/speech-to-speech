@@ -11,6 +11,7 @@ from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
 
 from speech_to_speech.pipeline.handler_types import STTIn, STTOut
 from speech_to_speech.pipeline.messages import PartialTranscription, Transcription
+from speech_to_speech.STT.allowed_languages import apply_allowed_language, configure_allowed_languages
 from speech_to_speech.STT.base_stt_handler import BaseSTTHandler
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,7 @@ class WhisperSTTHandler(BaseSTTHandler):
         torch_dtype: str = "float16",
         compile_mode: Optional[str] = None,
         language: Optional[str] = None,
+        allowed_languages: Optional[str] = None,
         gen_kwargs: dict[str, Any] = {},
     ) -> None:
         self.device = device
@@ -67,6 +69,7 @@ class WhisperSTTHandler(BaseSTTHandler):
         self.last_language = language if language != "auto" else None
         if self.last_language is not None:
             self.gen_kwargs["language"] = self.last_language
+        self.allowed_languages = configure_allowed_languages(language, allowed_languages, logger)
 
         self.processor = AutoProcessor.from_pretrained(model_name)
         self.model = AutoModelForSpeechSeq2Seq.from_pretrained(
@@ -234,6 +237,7 @@ class WhisperSTTHandler(BaseSTTHandler):
             # Auto-detect mode: ask Whisper which language this is, then force it so the
             # transcription and the reported code cannot disagree.
             encoder_outputs, detected = self._detect_language(input_features)
+            detected = apply_allowed_language(detected, getattr(self, "allowed_languages", None))
             if encoder_outputs is not None:
                 gen_kwargs["encoder_outputs"] = encoder_outputs
             if detected is not None:
