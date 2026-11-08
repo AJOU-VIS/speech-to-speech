@@ -29,6 +29,12 @@ def test_remove_unspeechable_keeps_chinese_punctuation() -> None:
     assert remove_unspeechable(text) == text
 
 
+def test_remove_unspeechable_reads_middle_dots_as_comma_pauses() -> None:
+    # Deleting the dot ran the words together ("학사행정캠퍼스") in spoken answers.
+    assert remove_unspeechable("학사·행정·캠퍼스 뭐든 물어봐요.") == "학사, 행정, 캠퍼스 뭐든 물어봐요."
+    assert remove_unspeechable("東京・大阪") == "東京, 大阪"
+
+
 # --- language name coverage ---------------------------------------------------------------
 #
 # A language code with no entry in WHISPER_LANGUAGE_TO_LLM_LANGUAGE resolves to a `None`
