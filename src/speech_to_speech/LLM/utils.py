@@ -13,6 +13,12 @@ SMART_PUNCT_TRANSLATION = str.maketrans(
         "\u2019": "'",
         "\u201c": '"',
         "\u201d": '"',
+        # Middle dots separate list items in Korean/Japanese ("학사·행정·캠퍼스"). They are not in
+        # SPEECHABLE_PATTERN, so they used to be deleted and the words ran together; read them
+        # as a comma pause instead.
+        "\u00b7": ", ",
+        "\u30fb": ", ",
+        "\u2027": ", ",
     }
 )
 
