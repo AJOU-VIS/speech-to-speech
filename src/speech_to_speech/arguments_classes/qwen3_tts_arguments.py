@@ -145,6 +145,21 @@ class Qwen3TTSHandlerArguments:
             "Default 0 (off)."
         },
     )
+    qwen3_tts_reading: Literal["off", "rules", "bun"] = field(
+        default="off",
+        metadata={
+            "help": "Rewrite numbers in Korean sentences into how they are read before TTS (9번 출구 -> 구 번 출구); "
+            "the text shown to clients is unchanged. 'rules': rule-based readings. 'bun': rules plus a fine-tuned "
+            "Qwen3-0.6B LoRA that decides '번' below 100 (number vs. count); needs qwen3_tts_reading_bun_adapter. "
+            "Default 'off' (unchanged behavior)."
+        },
+    )
+    qwen3_tts_reading_bun_adapter: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "LoRA folder (adapter_config.json + adapter_model.safetensors) for qwen3_tts_reading='bun'."
+        },
+    )
     qwen3_tts_blocksize: int = field(
         default=512,
         metadata={"help": "Audio chunk size in samples for streaming output. Default is 512."},
