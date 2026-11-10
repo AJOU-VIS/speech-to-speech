@@ -1,6 +1,6 @@
 """숫자 찾기(①)와 한글로 바꾸기(③) — 2차 실험 "값은 코드, 판단은 LLM".
 
-AJOU-VIS/ajou-vis research/normalize/numtext.py (ai-research/tts-accuracy 커밋 5516762)를 그대로 복사했다.
+AJOU-VIS/ajou-vis research/normalize/numtext.py (ai-research/tts-accuracy 커밋 5b7112e)를 그대로 복사했다.
 고칠 때는 원본을 먼저 고치고 다시 복사한다.
 
 1단계(spoken.py)에서 작은 모델에게 문장 전체를 다시 쓰게 하니 숫자 값 자체를 잘못 옮겼다 (4B 22%, 1.7B 43%).
@@ -123,8 +123,9 @@ _PATTERNS = [  # 앞에 있는 것이 먼저 (겹치면 앞의 것)
     ("latin", re.compile(r"[A-Za-z]+(?:-?\d+)?")),
     ("ordinal", re.compile(r"제(\d+)(?=[가-힣])")),
     ("fraction", re.compile(r"(\d+)분의\s*(\d+)")),
+    ("slash", re.compile(r"(?<![\d/])(\d+)/(\d+)(?![\d/])")),       # 1/4 — 분수 문맥일 때만 (_CONTEXT)
     ("decimal", re.compile(r"(\d+\.\d+)(?:\s*(%))?")),
-    ("hyphen", re.compile(r"(\d+)-(\d+)(?=\s*번)")),
+    ("hyphen", re.compile(r"(?<![\d\-])(\d+)-(\d+)(?![\d\-])")),    # 11-1번 — 버스 번호 문맥일 때만 (_CONTEXT)
     ("percent", re.compile(rf"({_NUM})\s*%")),
     ("int", re.compile(rf"({_NUM})(만)?(?:\s?({'|'.join(COUNTERS)}))?")),
 ]
@@ -139,6 +140,8 @@ def _fixed(kind: str, m: re.Match) -> str:
         return "제" + sino(int(m.group(1)))
     if kind == "fraction":
         return f"{sino(int(m.group(1)))}분의 {sino(int(m.group(2)))}"
+    if kind == "slash":
+        return f"{sino(int(m.group(2)))}분의 {sino(int(m.group(1)))}"
     if kind == "decimal":
         return decimal(m.group(1)) + (" 퍼센트" if m.group(2) else "")
     if kind == "hyphen":
@@ -146,6 +149,36 @@ def _fixed(kind: str, m: re.Match) -> str:
     if kind == "percent":
         return sino(int(m.group(1).replace(",", ""))) + " 퍼센트"
     raise ValueError(kind)
+
+
+def _same_sentence_after(text: str, end: int, width: int) -> str:
+    return re.split(r"[.!?\n]", text[end:end + width], maxsplit=1)[0]
+
+
+def _bus_context(text: str, m: re.Match) -> bool:
+    """하이픈 번호는 버스 번호일 때만 '다시'로 읽는다: 뒤에 '번'·'버스'가 이어지거나("11-1, 46-1번", "11-1 버스")
+    앞에 '버스'가 있을 때("버스 11-1"). 날짜·범위(3-4명) 같은 하이픈은 그대로 둔다."""
+    after = _same_sentence_after(text, m.end(), 15)
+    before = text[max(0, m.start() - 8):m.start()]
+    return "번" in after or "버스" in after or "버스" in before
+
+
+_FRACTION_BEFORE = ("일수", "등록금", "수업료", "금액", "기간")
+_FRACTION_AFTER = ("선", "이상", "이하", "미만", "초과", "정도", "만큼")
+
+
+def _fraction_context(text: str, m: re.Match) -> bool:
+    """빗금 숫자는 분수 문맥일 때만 'N분의 M'으로 읽는다 ("수업일수 1/4선까지"). 3/4(3월 4일) 같은 날짜와 헷갈리므로
+    앞에 일수·등록금 같은 말이 있거나 뒤에 선·이상 같은 말이 올 때만, 그리고 분자가 분모보다 작을 때만."""
+    numerator, denominator = int(m.group(1)), int(m.group(2))
+    if not 0 < numerator < denominator:
+        return False
+    before = text[max(0, m.start() - 12):m.start()]
+    after = text[m.end():].lstrip()
+    return any(w in before for w in _FRACTION_BEFORE) or after.startswith(_FRACTION_AFTER)
+
+
+_CONTEXT = {"hyphen": _bus_context, "slash": _fraction_context}
 
 
 def find_spans(text: str) -> list[Span]:
@@ -156,6 +189,8 @@ def find_spans(text: str) -> list[Span]:
         for m in pattern.finditer(text):
             start, end = m.span()
             if any(start < e and s < end for s, e in taken) or start == end:
+                continue
+            if kind in _CONTEXT and not _CONTEXT[kind](text, m):
                 continue
             if kind == "int":
                 written = m.group(1).replace(",", "")

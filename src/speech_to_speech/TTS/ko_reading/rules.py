@@ -1,6 +1,6 @@
 """규칙으로 읽는 방식 고르기 (2차 실험 ⓑ), 그리고 규칙 + LLM 섞기 (ⓓ).
 
-AJOU-VIS/ajou-vis research/normalize/rules.py (ai-research/tts-accuracy 커밋 5516762)를 복사했다.
+AJOU-VIS/ajou-vis research/normalize/rules.py (ai-research/tts-accuracy 커밋 5516762, numtext는 5b7112e)를 복사했다.
 바꾼 곳은 import 한 줄(패키지 안 상대 경로)뿐이다. 고칠 때는 원본을 먼저 고치고 다시 복사한다.
 
 ⓑ 규칙 (일반적인 한국어 읽기법으로만 썼다):
