@@ -1,6 +1,6 @@
 """숫자 찾기(①)와 한글로 바꾸기(③) — 2차 실험 "값은 코드, 판단은 LLM".
 
-AJOU-VIS/ajou-vis research/normalize/numtext.py (ai-research/tts-accuracy 커밋 5b7112e)를 그대로 복사했다.
+AJOU-VIS/ajou-vis research/normalize/numtext.py (ai-research/tts-accuracy 커밋 e0dcab7)를 그대로 복사했다.
 고칠 때는 원본을 먼저 고치고 다시 복사한다.
 
 1단계(spoken.py)에서 작은 모델에게 문장 전체를 다시 쓰게 하니 숫자 값 자체를 잘못 옮겼다 (4B 22%, 1.7B 43%).
@@ -11,6 +11,8 @@ AJOU-VIS/ajou-vis research/normalize/numtext.py (ai-research/tts-accuracy 커밋
   고르는 쪽은 rules.py(규칙) 또는 judge.py(LLM)이고, apply()가 고른 방식대로 문장을 만든다.
 
 규칙과 약어 사전은 일반적인 한국어 읽기법으로만 썼다 (평가 문장의 정답에 맞춰 고치지 않음).
+예외: 11/10 음성 서버에서 들어 보고 고친 것 (버스 하이픈 번호, 빗금 분수, 앞에 0이 붙은 시각, 영어 단어 사전).
+이 중 AIMS2(에임스 투)는 평가 문장 p36과 겹친다 — 평가 결과를 본 뒤 고친 것으로 밝힌다.
 """
 from __future__ import annotations
 
@@ -28,7 +30,13 @@ _LETTERS = {"A": "에이", "B": "비", "C": "씨", "D": "디", "E": "이", "F": 
             "S": "에스", "T": "티", "U": "유", "V": "브이", "W": "더블유", "X": "엑스", "Y": "와이", "Z": "제트"}
 # 단어처럼 읽는 약어 (널리 쓰는 시험·기관 이름). 없는 약어는 글자 이름대로 읽는다
 _WORDS = {"TOEFL": "토플", "TOEIC": "토익", "TEPS": "텝스", "TOPIK": "토픽", "IELTS": "아이엘츠", "OPIC": "오픽",
-          "NASA": "나사", "UNESCO": "유네스코", "KAIST": "카이스트", "POSTECH": "포스텍"}
+          "NASA": "나사", "UNESCO": "유네스코", "KAIST": "카이스트", "POSTECH": "포스텍",
+          # 서버 자료(corpus)에 대문자로 나오는 영어 단어 (11/10 음성 서버: CAFÉ ING를 "씨에이에프É"로 읽음)
+          "CAFE": "카페", "CAFÉ": "카페", "ACE": "에이스", "VISA": "비자", "APP": "앱", "NEW": "뉴", "GROUP": "그룹",
+          "EXIT": "엑시트", "BLACK": "블랙", "EXERCISE": "엑서사이즈", "AIMS": "에임스"}
+# 숫자까지 한 이름으로 읽는 것 (숫자를 영어로 읽음)
+_NAMES = {"AIMS2": "에임스 투"}
+_LATIN_LETTERS = "[A-Za-zÀ-ÖØ-öø-ÿ]"   # CAFÉ처럼 악센트 붙은 글자도 한 단어로 본다
 
 # 정수 뒤에 붙는 단위 (긴 것부터 맞춘다)
 COUNTERS = sorted(["번째", "개월", "학번", "학점", "학기", "학년", "시간", "교시", "과목", "가지", "군데", "페이지", "마리",
@@ -76,8 +84,15 @@ def decimal(text: str) -> str:
 
 def latin(token: str) -> str:
     """영어 약어: 사전에 있으면 단어로(TOEFL → 토플), 없으면 글자 이름대로(ROTC → 알오티씨). 붙은 숫자는 한자어."""
-    letters, number = re.fullmatch(r"([A-Za-z]+)-?(\d*)", token).groups()
-    word = _WORDS.get(letters.upper()) or "".join(_LETTERS[c] for c in letters.upper())
+    name = _NAMES.get(token.upper().replace("-", ""))
+    if name:
+        return name
+    letters, number = re.fullmatch(rf"({_LATIN_LETTERS}+)-?(\d*)", token).groups()
+    word = _WORDS.get(letters.upper())
+    if word is None:
+        if not all(c in _LETTERS for c in letters.upper()):
+            return token  # É처럼 영문 글자 이름이 없는 글자가 섞인 모르는 단어는 TTS에 그대로 넘긴다
+        word = "".join(_LETTERS[c] for c in letters.upper())
     return f"{word} {sino(int(number))}" if number else word
 
 
@@ -120,7 +135,7 @@ class Span:
 _NUM = r"\d{1,3}(?:,\d{3})+|\d+"
 _PATTERNS = [  # 앞에 있는 것이 먼저 (겹치면 앞의 것)
     ("phone", re.compile(r"(?<![\d.\-])(?:0\d{1,2}-\d{3,4}-\d{4}|\d{3,4}-\d{4})(?![\d\-])")),
-    ("latin", re.compile(r"[A-Za-z]+(?:-?\d+)?")),
+    ("latin", re.compile(rf"{_LATIN_LETTERS}+(?:-?\d+)?")),
     ("ordinal", re.compile(r"제(\d+)(?=[가-힣])")),
     ("fraction", re.compile(r"(\d+)분의\s*(\d+)")),
     ("slash", re.compile(r"(?<![\d/])(\d+)/(\d+)(?![\d/])")),       # 1/4 — 분수 문맥일 때만 (_CONTEXT)
@@ -156,11 +171,13 @@ def _same_sentence_after(text: str, end: int, width: int) -> str:
 
 
 def _bus_context(text: str, m: re.Match) -> bool:
-    """하이픈 번호는 버스 번호일 때만 '다시'로 읽는다: 뒤에 '번'·'버스'가 이어지거나("11-1, 46-1번", "11-1 버스")
-    앞에 '버스'가 있을 때("버스 11-1"). 날짜·범위(3-4명) 같은 하이픈은 그대로 둔다."""
-    after = _same_sentence_after(text, m.end(), 15)
-    before = text[max(0, m.start() - 8):m.start()]
-    return "번" in after or "버스" in after or "버스" in before
+    """하이픈 번호는 버스 번호일 때만 '다시'로 읽는다: 같은 문장에 '버스'·'노선'이 있거나("시내버스는 11-1, 46-1, 720-2")
+    뒤에 '번'이 이어질 때("11-1, 46-1번"). 날짜·범위(3-4명) 같은 하이픈은 그대로 둔다.
+    11/10 음성 서버: 버스 번호를 길게 늘어놓은 답에서 46-1이 '번'과 멀어 '다시'를 못 읽었다 → 문장 전체를 본다."""
+    sentence_start = max(text.rfind(c, 0, m.start()) for c in ".!?\n") + 1
+    before = text[sentence_start:m.start()]
+    after = _same_sentence_after(text, m.end(), 200)
+    return any(w in before or w in after for w in ("버스", "노선")) or "번" in after[:30]
 
 
 _FRACTION_BEFORE = ("일수", "등록금", "수업료", "금액", "기간")

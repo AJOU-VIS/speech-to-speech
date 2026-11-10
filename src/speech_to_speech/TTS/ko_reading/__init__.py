@@ -4,7 +4,7 @@
   off   — 바꾸지 않는다 (기본값, 원래 동작)
   rules — 규칙만 (AJOU-VIS 평가: TTS 숫자 오류율 35.7% → 12.2%, 지연 거의 0)
   bun   — 규칙 + '번' 판단 모델: 100 미만 '번'만 학습한 Qwen3-0.6B + LoRA가 고른다 (35.7% → 9.0%, '번' 칸당 약 80ms)
-근거·코드 원본: AJOU-VIS/ajou-vis research/normalize (ai-research/tts-accuracy 커밋 5516762, numtext는 5b7112e).
+근거·코드 원본: AJOU-VIS/ajou-vis research/normalize (ai-research/tts-accuracy 커밋 e0dcab7).
 
 평가 문장과 다른 점 하나: 평가 문장의 영어는 거의 약어였지만 서버 답변에는 Google, iBT 같은 일반 영어 단어도 나온다.
 그래서 대문자 약어(ROTC, CU, A0)와 사전에 있는 시험 이름(TOEFL 등)만 한글로 바꾸고, 소문자가 섞인 단어는 TTS에 그대로 넘긴다.
@@ -16,16 +16,18 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .numtext import _WORDS, find_spans
+from .numtext import _LATIN_LETTERS, _NAMES, _WORDS, find_spans
 from .rules import decide, use_bun_model
 
 MODES = ("off", "rules", "bun")
-_LATIN = re.compile(r"[A-Za-z]+(?:-?\d+)?")
+_LATIN = re.compile(rf"{_LATIN_LETTERS}+(?:-?\d+)?")
 _MASK_BASE = 0xE000  # 유니코드 사용자 영역: 숫자·영문 패턴에 안 걸린다
 
 
 def _keep_as_is(token: str) -> bool:
-    letters = re.match(r"[A-Za-z]+", token).group(0)
+    letters = re.match(rf"{_LATIN_LETTERS}+", token).group(0)
+    if token.upper().replace("-", "") in _NAMES:
+        return False
     return not (letters.isupper() or letters.upper() in _WORDS)
 
 

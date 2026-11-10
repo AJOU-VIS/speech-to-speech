@@ -939,7 +939,7 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
             log_exception(logger, "TTS 숫자 읽기 변환 실패, 원래 글로 합성", exc)
             return text
         if result.text != text:
-            console.print(f"[cyan]TTS 읽기 ({reading.mode}, {result.ms:.0f}ms): {result.text}")
+            console.print(f"[cyan]TTS 읽기 ({reading.mode}, {result.ms:.0f}ms): {result.text}", soft_wrap=True)
             logger.info(
                 "TTS reading %s: %.1f ms, %d spans (%d by bun model)", reading.mode, result.ms, result.spans,
                 result.by_model,

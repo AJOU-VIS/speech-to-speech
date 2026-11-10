@@ -1,6 +1,6 @@
 """규칙으로 읽는 방식 고르기 (2차 실험 ⓑ), 그리고 규칙 + LLM 섞기 (ⓓ).
 
-AJOU-VIS/ajou-vis research/normalize/rules.py (ai-research/tts-accuracy 커밋 5516762, numtext는 5b7112e)를 복사했다.
+AJOU-VIS/ajou-vis research/normalize/rules.py (ai-research/tts-accuracy 커밋 e0dcab7)를 복사했다.
 바꾼 곳은 import 한 줄(패키지 안 상대 경로)뿐이다. 고칠 때는 원본을 먼저 고치고 다시 복사한다.
 
 ⓑ 규칙 (일반적인 한국어 읽기법으로만 썼다):
@@ -26,6 +26,8 @@ from pathlib import Path
 
 from .numtext import DIGITS, NATIVE, SINO, Span, apply, find_spans
 
+# 앞에 0을 붙여 쓰는 시각·날짜 단위 (11/10 음성 서버: "08시"를 "공팔 시"로 읽음)
+TIME_COUNTERS = {"시", "분", "초", "월", "일"}
 NATIVE_COUNTERS = {"명", "개", "살", "시간", "달", "마리", "권", "잔", "곳", "가지", "과목", "군데", "번째", "배", "학기"}
 # 이 말과 붙어 있는 '번'은 번호 (이름처럼 붙인 수)
 NUMBERED = ("출구", "버스", "승강장", "창구", "메뉴", "항목", "문항", "게이트", "좌석", "사물함", "레인", "트랙", "채널",
@@ -36,8 +38,8 @@ LLM_COUNTERS = {"번", "학기", "분"}
 
 
 def rule_choice(text: str, span: Span) -> str:
-    if len(span.digits) > 1 and span.digits.startswith("0"):
-        return DIGITS  # 0으로 시작하면 번호라서 한 자리씩 (04학번 → 공사 학번)
+    if len(span.digits) > 1 and span.digits.startswith("0") and span.counter not in TIME_COUNTERS:
+        return DIGITS  # 0으로 시작하면 번호라서 한 자리씩 (04학번 → 공사 학번). 08시·05분은 시각이라 빼고 수로 읽는다
     if span.counter == "번":
         after = text[span.end:span.end + 6].lstrip()
         before = text[max(0, span.start - 12):span.start]
