@@ -41,6 +41,7 @@ from speech_to_speech.pipeline.messages import (
 )
 from speech_to_speech.pipeline.speculative_turns import SpeculativeTurnTracker
 from speech_to_speech.pipeline.transcript_logging import log_exception
+from speech_to_speech.TTS.ko_reading import KoreanReading
 from speech_to_speech.utils.mlx_lock import MLXLockContext
 
 logger = logging.getLogger(__name__)
@@ -154,6 +155,8 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
         max_new_tokens: int = DEFAULT_QWEN3_TTS_MAX_NEW_TOKENS,
         coalesce_inputs: bool = True,
         sentence_pause_s: float = 0.0,
+        reading: str = "off",
+        reading_bun_adapter: str | None = None,
         blocksize: int = 512,
         gen_kwargs: dict[str, Any] | None = None,
         cancel_scope: CancelScope | None = None,
@@ -235,6 +238,11 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
         self._initial_ref_audio = self.ref_audio
         self._initial_ref_spk = self.ref_spk
         self._initial_ref_rvq = self.ref_rvq
+
+        # 한국어 숫자 읽기 변환 (TTS에 넣는 글만 바꾸고 화면 글은 그대로)
+        self.reading = KoreanReading(reading, reading_bun_adapter, device=self.device)
+        if self.reading.enabled:
+            logger.info("TTS 숫자 읽기 변환: %s", self.reading.mode)
 
         self.warmup()
 
@@ -897,6 +905,7 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
         self._apply_session_voice_override(model_type, runtime_config, response)
 
         console.print(f"[green]ASSISTANT: {text}")
+        text = self._reading_text(text)
 
         try:
             if self._has_voice_clone_reference():
@@ -918,6 +927,24 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
                 yield audio_chunk
         except Exception as exc:
             log_exception(logger, "Error during Qwen3-TTS generation", exc)
+
+    def _reading_text(self, text: str) -> str:
+        """한국어 문장이면 숫자를 읽는 대로 바꾼 글을 돌려준다. 실패하면 원래 글 그대로 (합성은 멈추지 않는다)."""
+        reading = getattr(self, "reading", None)
+        if reading is None or not reading.enabled or self._effective_language(text) != "korean":
+            return text
+        try:
+            result = reading(text)
+        except Exception as exc:
+            log_exception(logger, "TTS 숫자 읽기 변환 실패, 원래 글로 합성", exc)
+            return text
+        if result.text != text:
+            console.print(f"[cyan]TTS 읽기 ({reading.mode}, {result.ms:.0f}ms): {result.text}", soft_wrap=True)
+            logger.info(
+                "TTS reading %s: %.1f ms, %d spans (%d by bun model)", reading.mode, result.ms, result.spans,
+                result.by_model,
+            )
+        return result.text
 
     def _log_first_audio_latency(self, tts_input: TTSInput) -> None:
         if tts_input.speech_stopped_at_s is None:
